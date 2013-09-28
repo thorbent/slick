@@ -36,6 +36,11 @@ abstract class Query[+E, U] extends Rep[Seq[U]] { self =>
   }
 
   def withFilter[T : CanBeQueryCondition](f: E => T) = filter(f)
+  def filterNot[T : CanBeQueryCondition](f: E => T) = filter(v => {
+    import CanBeQueryCondition._
+    BooleanColumnCanBeQueryCondition( null ) // <- removing this line breaks compilation, why?
+    Library.Not.column[Boolean](f(v).toNode)
+  })
 
   def where[T <: Column[_] : CanBeQueryCondition](f: E => T) = filter(f)
 
