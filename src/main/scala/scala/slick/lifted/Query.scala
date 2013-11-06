@@ -28,19 +28,19 @@ abstract class Query[+E, U] extends Rep[Seq[U]] { self =>
 
   def >>[F, T](q: Query[F, T]): Query[F, T] = flatMap(_ => q)
 
-  def filter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E, U] = {
+  private def filterHelper[T](f: E => T, wrapExpr: Node => Node)
+                             (implicit wt: CanBeQueryCondition[T]): Query[E, U] = {
     val generator = new AnonSymbol
     val aliased = unpackable.encodeRef(generator :: Nil)
     val fv = f(aliased.value)
-    new WrappingQuery[E, U](Filter.ifRefutable(generator, toNode, wt(fv).toNode), unpackable)
+    new WrappingQuery[E, U](Filter.ifRefutable(generator, toNode, wrapExpr(wt(fv).toNode)), unpackable)    
   }
+  def filter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E, U] =
+    filterHelper(f, identity)
+  def filterNot[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E, U] =
+    filterHelper(f, node => Library.Not.typed(node.nodeType, node) )
 
   def withFilter[T : CanBeQueryCondition](f: E => T) = filter(f)
-  def filterNot[T : CanBeQueryCondition](f: E => T) = filter(v => {
-    import CanBeQueryCondition._
-    BooleanColumnCanBeQueryCondition( null ) // <- removing this line breaks compilation, why?
-    Library.Not.column[Boolean](f(v).toNode)
-  })
 
   def where[T <: Column[_] : CanBeQueryCondition](f: E => T) = filter(f)
 
@@ -128,15 +128,19 @@ object Query extends Query[Column[Unit], Unit] {
 trait CanBeQueryCondition[-T] extends (T => Column[_])
 
 object CanBeQueryCondition {
-  implicit object BooleanColumnCanBeQueryCondition extends CanBeQueryCondition[Column[Boolean]] {
-    def apply(value: Column[Boolean]) = value
-  }
-  implicit object BooleanOptionColumnCanBeQueryCondition extends CanBeQueryCondition[Column[Option[Boolean]]] {
-    def apply(value: Column[Option[Boolean]]) = value
-  }
-  implicit object BooleanCanBeQueryCondition extends CanBeQueryCondition[Boolean] {
-    def apply(value: Boolean) = new ConstColumn(value)
-  }
+  // explicit return types help implicit resolution (thx @retronym)
+  implicit val BooleanColumnCanBeQueryCondition : CanBeQueryCondition[Column[Boolean]] =
+    new CanBeQueryCondition[Column[Boolean]] {
+      def apply(value: Column[Boolean]) = value
+    }
+  implicit val BooleanOptionColumnCanBeQueryCondition : CanBeQueryCondition[Column[Option[Boolean]]] =
+    new CanBeQueryCondition[Column[Option[Boolean]]] {
+      def apply(value: Column[Option[Boolean]]) = value
+    }
+  implicit val BooleanCanBeQueryCondition : CanBeQueryCondition[Boolean] =
+    new CanBeQueryCondition[Boolean] {
+      def apply(value: Boolean) = new ConstColumn(value)
+    }
 }
 
 class WrappingQuery[+E, U](val toNode: Node, val base: ShapedValue[_ <: E, U]) extends Query[E, U] {
