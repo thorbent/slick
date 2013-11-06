@@ -128,7 +128,9 @@ object Query extends Query[Column[Unit], Unit] {
 trait CanBeQueryCondition[-T] extends (T => Column[_])
 
 object CanBeQueryCondition {
-  // explicit return types help implicit resolution (thx @retronym)
+  // Using implicits with explicit type annotation here (instead of previously implicit objects)
+  // because otherwise they would not be found in thsi file above this line. 
+  // See #217
   implicit val BooleanColumnCanBeQueryCondition : CanBeQueryCondition[Column[Boolean]] =
     new CanBeQueryCondition[Column[Boolean]] {
       def apply(value: Column[Boolean]) = value
